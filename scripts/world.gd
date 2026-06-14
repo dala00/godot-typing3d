@@ -125,7 +125,7 @@ func _build_bgm() -> void:
 		s.loop = true
 	var p := AudioStreamPlayer.new()
 	p.stream = s
-	p.volume_db = -12.0
+	p.volume_db = -6.0
 	add_child(p)
 	_bgm = p
 	# ブラウザは初回ユーザー操作前の再生を無視するので、web では初入力まで保留
@@ -508,9 +508,10 @@ func _build_ui() -> void:
 	if ft != null:
 		th.default_font = ft
 
-	# 読みやすさ用の半透明の帯
+	# 読みやすさ用の帯。ごく薄い白パネル。文字側はアウトラインで縁取りして
+	# 帯の濃さや背景(明/暗)に依らず読めるようにしている。
 	var bar := ColorRect.new()
-	bar.color = Color(0, 0, 0, 0.45)
+	bar.color = Color(0.9, 0.92, 0.97, 0.22)
 	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	bar.offset_bottom = 96
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -526,6 +527,9 @@ func _build_ui() -> void:
 	panel.custom_minimum_size = Vector2(600, 0)
 	panel.add_theme_font_size_override("normal_font_size", 44)
 	panel.add_theme_font_size_override("bold_font_size", 44)
+	# 暗いアウトラインで縁取り(未入力文字が帯/背景と被っても読める)
+	panel.add_theme_constant_override("outline_size", 6)
+	panel.add_theme_color_override("font_outline_color", Color(0.04, 0.05, 0.09, 0.95))
 	layer.add_child(panel)
 	_ui = panel
 
@@ -534,6 +538,10 @@ func _build_ui() -> void:
 	sc.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	sc.position = Vector2(22, 14)
 	sc.add_theme_font_size_override("font_size", 26)
+	# 暗色文字＋白いアウトライン(薄い帯でも暗い背景でも読める)
+	sc.add_theme_color_override("font_color", Color(0.12, 0.14, 0.2))
+	sc.add_theme_color_override("font_outline_color", Color(1, 1, 1, 0.85))
+	sc.add_theme_constant_override("outline_size", 5)
 	layer.add_child(sc)
 	_ui_score = sc
 
@@ -547,6 +555,8 @@ func _build_ui() -> void:
 	tm.offset_bottom = 84
 	tm.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	tm.add_theme_font_size_override("font_size", 26)
+	tm.add_theme_color_override("font_outline_color", Color(1, 1, 1, 0.85))
+	tm.add_theme_constant_override("outline_size", 5)
 	layer.add_child(tm)
 	_ui_time = tm
 
@@ -563,13 +573,20 @@ func _build_ui() -> void:
 
 	# 操作ヒント
 	var hint := Label.new()
-	hint.text = "A/D 旋回   W/S 前後   SPACE ジャンプで踏む"
-	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 画面左下の隅に左寄せ・2行で控えめに(横並びだと幅が足りずはみ出すため)
+	hint.text = "A/D 旋回   W/S 前後\nSPACE ジャンプで確定"
+	hint.anchor_left = 0.0
+	hint.anchor_right = 0.0
+	hint.anchor_top = 1.0
+	hint.anchor_bottom = 1.0
+	hint.offset_left = 18
+	hint.offset_top = -60
+	hint.offset_right = 520
+	hint.offset_bottom = -10
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	hint.add_theme_font_size_override("font_size", 20)
-	hint.modulate = Color(1, 1, 1, 0.6)
-	hint.position = Vector2(0, -10)
+	hint.add_theme_font_size_override("font_size", 16)
+	hint.modulate = Color(1, 1, 1, 0.5)
 	layer.add_child(hint)
 
 	# 全テキストUIに日本語フォントThemeを適用
@@ -632,10 +649,11 @@ func _update_ui() -> void:
 	if _char_idx < _target.length():
 		cur = _target[_char_idx]
 		rest = _target.substr(_char_idx + 1)
+	# アウトライン前提の配色(済=緑 / 次=赤橙太字 / 未入力=明るい灰で被り回避)
 	var bb := "[center]"
-	bb += "[color=#7fff9f]" + done + "[/color]"
-	bb += "[color=#ffe14d][b]" + cur + "[/b][/color]"
-	bb += "[color=#5a6472]" + rest + "[/color]"
+	bb += "[color=#3ec06a]" + done + "[/color]"
+	bb += "[color=#ff6a2a][b]" + cur + "[/b][/color]"
+	bb += "[color=#c2c9d4]" + rest + "[/color]"
 	bb += "[/center]"
 	_ui.text = bb
 
@@ -833,9 +851,10 @@ func _update_hud() -> void:
 			_ui_score.text += "    COMBO x%d" % _combo
 	if _ui_time:
 		_ui_time.text = "LV %d\nTIME %0.1f" % [_level, _time_left]
-		# 残り時間で色を変える
+		# 通常は暗色、残り少なくなったら赤(modulateだと白アウトラインも染まるのでfont_colorで)
 		var r: float = clampf(_time_left / maxf(0.01, _time_limit), 0.0, 1.0)
-		_ui_time.modulate = Color(1.0, 0.4 + 0.6 * r, 0.4 + 0.6 * r) if r < 0.4 else Color(1, 1, 1)
+		var tcol := Color(0.85, 0.12, 0.12) if r < 0.4 else Color(0.12, 0.14, 0.2)
+		_ui_time.add_theme_color_override("font_color", tcol)
 
 
 func _popup(text: String, col: Color) -> void:
