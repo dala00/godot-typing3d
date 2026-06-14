@@ -76,6 +76,9 @@ var _level := 1
 var _time_left := 0.0
 var _time_limit := 1.0
 var _playing := false
+var _game_over := false
+var _go_ready := false   # ゲームオーバー後、リトライ受付可能か
+var _best := 0
 var _ui_score: Label = null
 var _ui_time: Label = null
 var _ui_pop: Label = null
@@ -487,6 +490,9 @@ func _forward() -> Vector3:
 func _physics_process(delta: float) -> void:
 	if _runner == null:
 		return
+	if _game_over:
+		_check_restart()
+		return
 	# A/D = 旋回(向き変更)
 	var turn := 0.0
 	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
@@ -613,15 +619,47 @@ func _on_word_clear() -> void:
 func _on_time_up() -> void:
 	if not _playing:
 		return
+	_game_over_now()
+
+
+func _game_over_now() -> void:
 	_playing = false
+	_game_over = true
+	_go_ready = false
 	_combo = 0
+	_best = maxi(_best, _score)
 	if _sfx:
 		_sfx.play("err")
-	_popup("TIME UP", Color(1.0, 0.5, 0.5))
 	_update_hud()
+	if _ui_pop:
+		_ui_pop.text = "GAME OVER\nSCORE %d    BEST %d\n\n[ SPACE ] でリトライ" % [_score, _best]
+		_ui_pop.add_theme_font_size_override("font_size", 56)
+		_ui_pop.modulate = Color(1.0, 0.55, 0.55, 1.0)
 	var t := create_tween()
-	t.tween_interval(0.9)
-	t.tween_callback(_next_word)
+	t.tween_interval(0.7)
+	t.tween_callback(func(): _go_ready = true)
+
+
+func _check_restart() -> void:
+	if _go_ready and (Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ENTER)):
+		_restart()
+
+
+func _restart() -> void:
+	_game_over = false
+	_go_ready = false
+	if _ui_pop:
+		_ui_pop.modulate = Color(1, 1, 1, 0)
+	# ハイライトを消す
+	if _highlight_char != "" and _key_label.has(_highlight_char):
+		_key_label[_highlight_char].modulate = LABEL_BASE
+	_highlight_char = ""
+	# 主人公をホームへ
+	_runner.position = _key_pos.get("F", Vector3.ZERO) + Vector3(0, KEYCAP_H, 0)
+	_runner.rotation = Vector3.ZERO
+	_grounded = true
+	_jump_vy = 0.0
+	_start_game()
 
 
 func _update_hud() -> void:
@@ -639,6 +677,7 @@ func _update_hud() -> void:
 func _popup(text: String, col: Color) -> void:
 	if _ui_pop == null:
 		return
+	_ui_pop.add_theme_font_size_override("font_size", 72)
 	_ui_pop.text = text
 	_ui_pop.modulate = Color(col.r, col.g, col.b, 1.0)
 	var tw := create_tween()
