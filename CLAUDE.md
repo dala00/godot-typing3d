@@ -28,6 +28,14 @@
 お題の単語(`WORDS`)を上部UIに表示し、**次に踏むキーを金色ハイライト**。プレイヤーがキャラを動かして対象キーへ行き、**ジャンプ→着地で踏んだキーを判定**(`_key_under_runner`が`STOMP_RADIUS`内の最寄りキー)。正解なら白フラッシュ＆進行、違うキーは赤フラッシュ。単語完了で次の単語へ。
 - 物理は`_physics_process`(移動/旋回/重力/着地)、カメラ追従は`_process`。移動範囲は`_compute_bounds`でキー配置から算出。
 - 主要パラメータ: `MOVE_SPEED` `TURN_SPEED` `JUMP_V` `GRAVITY` `STOMP_RADIUS`。
+- 操作感: ジャンプバッファ(`JUMP_BUFFER`)＋コヨーテ(`COYOTE`)。
+
+## スコア・難易度・演出
+- スコア: 正解で `SCORE_PER × コンボ`、お手つきでコンボ消滅＋時間-1秒。単語クリアで `WORD_BONUS`＋残り時間ボーナス。
+- 制限時間: `_next_word`で `3.0 + 文字数 × per_char`(per_charはレベルで微減)。**キー間を歩く時間込みで長めに**(短すぎ厳禁。2026-06-14の調整)。
+- 難易度: クリアごと`_level++`。`_pick_word`が`_level`で単語長を増やし、`per_char`を減らす。
+- 効果音は `scripts/sfx.gd`(PCM合成・アセット0)。jump/stomp/ok/err/clear を起動時生成しキャッシュ、`_sfx.play(name)`で再生。
+- HUD: 左上スコア＆コンボ／右上LV＆残り時間(残少で赤)／中央ポップ(CLEAR・TIME UP)。
 
 ## アセット
 - `assets/blend/runner.blend` 主人公のソース（Blender 5.x）。ちびキャラ（大頭＋胴＋腕脚）＋11ボーンのアーマチュア。**リジッドスキン**（各パーツを頂点グループ weight=1 で1ボーンに割当→join）。`Run` アクション（24fps, 1–20フレームループ。コンタクト/パッシング×2）。**肘は前曲げ・膝は後ろ曲げ**（人体準拠）。
@@ -50,4 +58,5 @@
 - GodotはBlend直接インポートを試みて失敗するので、`project.godot` で `import/blender/enabled=false`。`assets/blend/` と `tools/` には `.gdignore` を置いてGodogの索引から除外。
 - Blender 5.x の新アニメAPIでは `Action.fcurves` が無い（layers/strips経由）。`keyframe_insert` 自体は従来通り使える。
 - **定数名の衝突注意**: Godotの組み込みキー定数 `KEY_W` `KEY_A` … `KEY_H` `KEY_SPACE` 等は global。自前の定数を `KEY_*` で作ると衝突して `Input.is_key_pressed()` にfloatを渡すバグになる。キー寸法は `KEYCAP_W/D/H` という名前にしてある。
+- **型推論の注意**: `lerp()` `max()` `floor()` などは Variant を返すことがあり `var x := ...` で「型推論できない」エラーになる。`var x: float = ...` と明示するか `maxi/maxf/clampf` 等の型付き関数を使う。
 - `.claude/settings.local.json`（マシン固有の絶対パス許可）と `tools/shot.png`/`crop.png` は gitignore 済み。

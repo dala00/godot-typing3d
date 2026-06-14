@@ -16,10 +16,16 @@ const CAM_OFFSET := Vector3(0.0, 0.40, 0.50)
 const CAM_LOOK := Vector3(0.0, 0.08, -0.60)
 
 # 操作(WASD移動＋スペースジャンプ)パラメータ
-const MOVE_SPEED := 0.62      # units/sec
-const JUMP_V := 0.95          # 初速
-const GRAVITY := 4.2
-const STOMP_RADIUS := 0.13    # 着地時にキーを踏んだと判定する半径
+const MOVE_SPEED := 0.92      # units/sec
+const JUMP_V := 0.98          # 初速
+const GRAVITY := 4.4
+const STOMP_RADIUS := 0.115   # 着地時にキーを踏んだと判定する半径
+const JUMP_BUFFER := 0.13     # 早押しジャンプの受付時間
+const COYOTE := 0.10          # 接地を離れてからジャンプ可能な猶予
+
+# スコア
+const SCORE_PER := 100        # 1キー正解(×コンボ)
+const WORD_BONUS := 500       # 単語クリア
 
 # キーボード全体の基準。X中央=0、Z=0付近に手前行。
 var _kbd_width := 10.0 * PITCH
@@ -34,16 +40,36 @@ var _rim: OmniLight3D = null
 # --- ゲーム状態 ---
 const LABEL_BASE := Color(0.85, 1.25, 2.1)      # 通常の文字色(青白・発光)
 const LABEL_NEXT := Color(2.6, 2.2, 0.4)        # 次に押すキー(金・強発光)
-const WORDS := ["GODOT", "TYPING", "JUMP", "KEYBOARD", "RUNNER", "PIXEL", "QUEST"]
-var _word_idx := 0
+const WORDS := [
+	"CAT", "DOG", "RUN", "SKY", "FOX", "ZAP",
+	"JUMP", "GAME", "CODE", "DARK", "GLOW", "KEYS", "FAST", "STAR", "MOON", "TYPE",
+	"GODOT", "PIXEL", "LEVEL", "SCORE", "SPEED", "LIGHT", "NIGHT", "BRAVE", "QUEST",
+	"TYPING", "RUNNER", "PLAYER", "JUMPER",
+	"KEYBOARD", "VICTORY",
+]
 var _target := ""
 var _char_idx := 0
 var _runner_char := "F"
 var _highlight_char := ""
 var _ui: RichTextLabel = null
 
+# ゲーム進行
+var _score := 0
+var _combo := 0
+var _level := 1
+var _time_left := 0.0
+var _time_limit := 1.0
+var _playing := false
+var _ui_score: Label = null
+var _ui_time: Label = null
+var _ui_pop: Label = null
+var _sfx: Node = null
+# 操作感
+var _jump_buf := 0.0
+var _coyote := 0.0
+
 # 操作・物理
-const TURN_SPEED := 2.6        # rad/sec (A/D旋回)
+const TURN_SPEED := 3.2        # rad/sec (A/D旋回)
 var _grounded := true
 var _jump_vy := 0.0
 var _y_ground := KEYCAP_H
@@ -61,7 +87,9 @@ func _ready() -> void:
 	_build_camera()
 	_build_ui()
 	_compute_bounds()
-	_start_word(0)
+	_sfx = preload("res://scripts/sfx.gd").new()
+	add_child(_sfx)
+	_start_game()
 
 
 func _compute_bounds() -> void:
@@ -328,25 +356,80 @@ func _build_ui() -> void:
 	layer.add_child(panel)
 	_ui = panel
 
+	# スコア(左上)
+	var sc := Label.new()
+	sc.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	sc.position = Vector2(22, 14)
+	sc.add_theme_font_size_override("font_size", 26)
+	layer.add_child(sc)
+	_ui_score = sc
+
+	# タイム/レベル(右上)
+	var tm := Label.new()
+	tm.anchor_left = 1.0
+	tm.anchor_right = 1.0
+	tm.offset_left = -320
+	tm.offset_right = -22
+	tm.offset_top = 14
+	tm.offset_bottom = 84
+	tm.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	tm.add_theme_font_size_override("font_size", 26)
+	layer.add_child(tm)
+	_ui_time = tm
+
+	# 中央ポップ(クリア演出など)
+	var pop := Label.new()
+	pop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pop.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pop.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	pop.add_theme_font_size_override("font_size", 72)
+	pop.modulate = Color(1, 1, 1, 0)
+	pop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(pop)
+	_ui_pop = pop
+
 	# 操作ヒント
 	var hint := Label.new()
-	hint.text = "WASD: A/D 旋回・W/S 前後   /   SPACE: ジャンプで踏む"
+	hint.text = "A/D 旋回   W/S 前後   SPACE ジャンプで踏む"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	hint.add_theme_font_size_override("font_size", 20)
-	hint.modulate = Color(1, 1, 1, 0.7)
+	hint.modulate = Color(1, 1, 1, 0.6)
 	hint.position = Vector2(0, -10)
 	layer.add_child(hint)
 
 
 # ---------------- ゲームループ ----------------
 
-func _start_word(idx: int) -> void:
-	_word_idx = idx % WORDS.size()
-	_target = WORDS[_word_idx]
+func _start_game() -> void:
+	_score = 0
+	_combo = 0
+	_level = 1
+	_next_word()
+
+
+func _pick_word() -> String:
+	var target_len: int = clampi(3 + int(_level / 2.0), 3, 8)
+	var cands := WORDS.filter(func(s): return abs(s.length() - target_len) <= 1)
+	if cands.is_empty():
+		cands = WORDS
+	var w: String = cands[randi() % cands.size()]
+	if w == _target and cands.size() > 1:
+		w = cands[(cands.find(w) + 1) % cands.size()]
+	return w
+
+
+func _next_word() -> void:
+	_target = _pick_word()
 	_char_idx = 0
+	# キー間を歩いて移動する時間を見込み、1文字あたりたっぷり確保(レベルで微減)
+	var per_char: float = clampf(3.8 - _level * 0.15, 2.0, 3.8)
+	_time_limit = 3.0 + _target.length() * per_char
+	_time_left = _time_limit
+	_playing = true
 	_update_ui()
+	_update_hud()
 	_set_next_highlight()
 
 
@@ -408,10 +491,26 @@ func _physics_process(delta: float) -> void:
 	pos.x = clampf(pos.x, _bmin.x, _bmax.x)
 	pos.z = clampf(pos.z, _bmin.y, _bmax.y)
 
-	# ジャンプ/重力
-	if _grounded and Input.is_key_pressed(KEY_SPACE):
+	# ジャンプバッファ(早押し受付)とコヨーテタイム
+	if Input.is_key_pressed(KEY_SPACE):
+		_jump_buf = JUMP_BUFFER
+	else:
+		_jump_buf = maxf(0.0, _jump_buf - delta)
+	if _grounded:
+		_coyote = COYOTE
+	else:
+		_coyote = maxf(0.0, _coyote - delta)
+
+	# ジャンプ発動
+	if _jump_buf > 0.0 and _coyote > 0.0:
 		_jump_vy = JUMP_V
 		_grounded = false
+		_jump_buf = 0.0
+		_coyote = 0.0
+		if _sfx:
+			_sfx.play("jump")
+
+	# 重力/着地
 	if not _grounded:
 		_jump_vy -= GRAVITY * delta
 		pos.y += _jump_vy * delta
@@ -426,6 +525,14 @@ func _physics_process(delta: float) -> void:
 		pos.y = _y_ground
 	_runner.position = pos
 	_update_anim(mv, turn)
+
+	# 制限時間
+	if _playing:
+		_time_left -= delta
+		if _time_left <= 0.0:
+			_time_left = 0.0
+			_on_time_up()
+		_update_hud()
 
 
 func _update_anim(mv: float, turn: float) -> void:
@@ -442,11 +549,26 @@ func _on_land() -> void:
 		return
 	_runner_char = ch
 	_key_depress(ch)
+	if _sfx:
+		_sfx.play("stomp")
+	if not _playing:
+		return
 	if ch == _highlight_char:
+		_combo += 1
+		_score += SCORE_PER * _combo
 		_flash_label(ch, Color(3.0, 3.0, 3.0)) # 正解フラッシュ(白)
+		if _sfx:
+			_sfx.play("ok")
+		_update_hud()
 		_advance()
 	else:
-		_flash_label(ch, Color(3.0, 0.35, 0.35)) # お手つき(赤)
+		# お手つき: コンボ消滅＋時間ペナルティ
+		_combo = 0
+		_time_left = maxf(0.0, _time_left - 1.0)
+		_flash_label(ch, Color(3.0, 0.35, 0.35))
+		if _sfx:
+			_sfx.play("err")
+		_update_hud()
 
 
 func _advance() -> void:
@@ -454,9 +576,58 @@ func _advance() -> void:
 	_update_ui()
 	_set_next_highlight()
 	if _char_idx >= _target.length():
-		var t := create_tween()
-		t.tween_interval(0.7)
-		t.tween_callback(func(): _start_word(_word_idx + 1))
+		_on_word_clear()
+
+
+func _on_word_clear() -> void:
+	_playing = false
+	var time_bonus := int(_time_left * 50.0)
+	var gained := WORD_BONUS + time_bonus
+	_score += gained
+	_level += 1
+	if _sfx:
+		_sfx.play("clear")
+	_popup("CLEAR!  +" + str(gained), Color(0.6, 1.0, 0.7))
+	_update_hud()
+	var t := create_tween()
+	t.tween_interval(0.95)
+	t.tween_callback(_next_word)
+
+
+func _on_time_up() -> void:
+	if not _playing:
+		return
+	_playing = false
+	_combo = 0
+	if _sfx:
+		_sfx.play("err")
+	_popup("TIME UP", Color(1.0, 0.5, 0.5))
+	_update_hud()
+	var t := create_tween()
+	t.tween_interval(0.9)
+	t.tween_callback(_next_word)
+
+
+func _update_hud() -> void:
+	if _ui_score:
+		_ui_score.text = "SCORE %d" % _score
+		if _combo >= 2:
+			_ui_score.text += "    COMBO x%d" % _combo
+	if _ui_time:
+		_ui_time.text = "LV %d\nTIME %0.1f" % [_level, _time_left]
+		# 残り時間で色を変える
+		var r: float = clampf(_time_left / maxf(0.01, _time_limit), 0.0, 1.0)
+		_ui_time.modulate = Color(1.0, 0.4 + 0.6 * r, 0.4 + 0.6 * r) if r < 0.4 else Color(1, 1, 1)
+
+
+func _popup(text: String, col: Color) -> void:
+	if _ui_pop == null:
+		return
+	_ui_pop.text = text
+	_ui_pop.modulate = Color(col.r, col.g, col.b, 1.0)
+	var tw := create_tween()
+	tw.tween_interval(0.5)
+	tw.tween_property(_ui_pop, "modulate:a", 0.0, 0.5)
 
 
 func _key_under_runner() -> String:
