@@ -41,11 +41,27 @@ var _rim: OmniLight3D = null
 const LABEL_BASE := Color(0.85, 1.25, 2.1)      # 通常の文字色(青白・発光)
 const LABEL_NEXT := Color(2.6, 2.2, 0.4)        # 次に押すキー(金・強発光)
 const WORDS := [
-	"CAT", "DOG", "RUN", "SKY", "FOX", "ZAP",
+	# 3
+	"CAT", "DOG", "RUN", "SKY", "FOX", "ZAP", "SUN", "MAP", "BUG", "CUP",
+	"HAT", "ICE", "JAM", "KEY", "LOG", "NET", "OWL", "PEN", "RAT", "TOP",
+	"VAN", "WAX", "YES", "ZIP", "ARM", "BOX", "EAR", "FAN", "GAP", "JOY",
+	# 4
 	"JUMP", "GAME", "CODE", "DARK", "GLOW", "KEYS", "FAST", "STAR", "MOON", "TYPE",
-	"GODOT", "PIXEL", "LEVEL", "SCORE", "SPEED", "LIGHT", "NIGHT", "BRAVE", "QUEST",
-	"TYPING", "RUNNER", "PLAYER", "JUMPER",
-	"KEYBOARD", "VICTORY",
+	"WAVE", "FIRE", "WIND", "SNOW", "RAIN", "LEAF", "ROCK", "GOLD", "BLUE", "PINK",
+	"FROG", "BIRD", "FISH", "LION", "BEAR", "WOLF", "DUCK", "CITY", "ROAD", "SHIP",
+	"COIN", "DASH", "GRID", "HERO", "KING", "MAZE", "BEAM", "BOLT", "CAVE", "DUSK",
+	# 5
+	"GODOT", "PIXEL", "LEVEL", "SCORE", "SPEED", "LIGHT", "NIGHT", "BRAVE", "QUEST", "MAGIC",
+	"ROBOT", "LASER", "POWER", "GHOST", "CLOUD", "STORM", "FLAME", "RIVER", "OCEAN", "TIGER",
+	"EAGLE", "SNAKE", "PANDA", "HONEY", "CANDY", "DREAM", "SPACE", "EARTH", "PLANT", "MOUSE",
+	"SWORD", "SHARP", "QUICK", "JOLLY", "ZEBRA",
+	# 6
+	"TYPING", "RUNNER", "PLAYER", "JUMPER", "ROCKET", "DRAGON", "KNIGHT", "WIZARD", "PLANET", "GALAXY",
+	"SHADOW", "BRIGHT", "FROZEN", "GARDEN", "FOREST", "SILVER", "GOLDEN", "PURPLE", "ORANGE", "CASTLE",
+	# 7
+	"VICTORY", "THUNDER", "CRYSTAL", "DIAMOND", "JOURNEY", "MACHINE", "PROGRAM", "RAINBOW", "STARGEM", "MONSTER",
+	# 8
+	"KEYBOARD", "COMPUTER", "MOUNTAIN", "ELEPHANT", "SUNLIGHT", "MOONBEAM", "FIREWORK", "DINOSAUR",
 ]
 var _target := ""
 var _char_idx := 0
@@ -423,9 +439,9 @@ func _pick_word() -> String:
 func _next_word() -> void:
 	_target = _pick_word()
 	_char_idx = 0
-	# キー間を歩いて移動する時間を見込み、1文字あたりたっぷり確保(レベルで微減)
-	var per_char: float = clampf(3.8 - _level * 0.15, 2.0, 3.8)
-	_time_limit = 3.0 + _target.length() * per_char
+	# キー間を歩いて移動する時間を見込みつつ、ややタイトに(レベルで微減)
+	var per_char: float = clampf(2.6 - _level * 0.13, 1.4, 2.6)
+	_time_limit = 2.0 + _target.length() * per_char
 	_time_left = _time_limit
 	_playing = true
 	_update_ui()
