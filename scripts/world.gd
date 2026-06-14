@@ -3,19 +3,53 @@ extends Node3D
 ## 真っ暗な部屋にノートPCを置き、ディスプレイの光で照らされた
 ## 文字入りキーボード(英字26)を構築する。すべてコードから生成する。
 
-const KEY_W := 0.165
-const KEY_D := 0.165
-const KEY_H := 0.05
+const KEYCAP_W := 0.165
+const KEYCAP_D := 0.165
+const KEYCAP_H := 0.05
 const PITCH := 0.19
 
 const ROWS := ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
 const ROW_STAGGER := [0.0, 0.5, 1.0] # 横ずらし(キー数)
 
+# 三人称追従カメラのオフセット(キャラ基準)
+const CAM_OFFSET := Vector3(0.0, 0.40, 0.50)
+const CAM_LOOK := Vector3(0.0, 0.08, -0.60)
+
+# 操作(WASD移動＋スペースジャンプ)パラメータ
+const MOVE_SPEED := 0.62      # units/sec
+const JUMP_V := 0.95          # 初速
+const GRAVITY := 4.2
+const STOMP_RADIUS := 0.13    # 着地時にキーを踏んだと判定する半径
+
 # キーボード全体の基準。X中央=0、Z=0付近に手前行。
 var _kbd_width := 10.0 * PITCH
 # 各キーの床位置(y=0)。文字 -> Vector3
 var _key_pos := {}
+var _key_node := {} # 文字 -> MeshInstance3D
+var _key_label := {} # 文字 -> Label3D
 var _runner: Node3D = null
+var _cam: Camera3D = null
+var _rim: OmniLight3D = null
+
+# --- ゲーム状態 ---
+const LABEL_BASE := Color(0.85, 1.25, 2.1)      # 通常の文字色(青白・発光)
+const LABEL_NEXT := Color(2.6, 2.2, 0.4)        # 次に押すキー(金・強発光)
+const WORDS := ["GODOT", "TYPING", "JUMP", "KEYBOARD", "RUNNER", "PIXEL", "QUEST"]
+var _word_idx := 0
+var _target := ""
+var _char_idx := 0
+var _runner_char := "F"
+var _highlight_char := ""
+var _ui: RichTextLabel = null
+
+# 操作・物理
+const TURN_SPEED := 2.6        # rad/sec (A/D旋回)
+var _grounded := true
+var _jump_vy := 0.0
+var _y_ground := KEYCAP_H
+var _bmin := Vector2.ZERO      # 移動可能範囲(x,z)
+var _bmax := Vector2.ZERO
+var _ap: AnimationPlayer = null
 
 func _ready() -> void:
 	_build_environment()
@@ -25,6 +59,28 @@ func _ready() -> void:
 	_build_lights()
 	_build_runner()
 	_build_camera()
+	_build_ui()
+	_compute_bounds()
+	_start_word(0)
+
+
+func _compute_bounds() -> void:
+	var first := true
+	for ch in _key_pos.keys():
+		var p: Vector3 = _key_pos[ch]
+		if first:
+			_bmin = Vector2(p.x, p.z)
+			_bmax = Vector2(p.x, p.z)
+			first = false
+		else:
+			_bmin.x = minf(_bmin.x, p.x)
+			_bmin.y = minf(_bmin.y, p.z)
+			_bmax.x = maxf(_bmax.x, p.x)
+			_bmax.y = maxf(_bmax.y, p.z)
+	# キー範囲から少しだけ外に出られる余白
+	var m := PITCH * 0.5
+	_bmin -= Vector2(m, m)
+	_bmax += Vector2(m, m)
 
 
 func _build_environment() -> void:
@@ -66,19 +122,19 @@ func _build_laptop() -> void:
 	# --- 本体(キーボードデッキ) ---
 	var deck := MeshInstance3D.new()
 	var dm := BoxMesh.new()
-	dm.size = Vector3(_kbd_width + 0.35, 0.04, 0.95)
+	dm.size = Vector3(_kbd_width + 0.35, 0.04, 1.15)
 	deck.mesh = dm
 	var dmat := StandardMaterial3D.new()
 	dmat.albedo_color = Color(0.05, 0.05, 0.06)
 	dmat.metallic = 0.6
 	dmat.roughness = 0.45
 	dm.material = dmat
-	deck.position = Vector3(0, -0.02, -0.10)
+	deck.position = Vector3(0, -0.02, -0.20)
 	add_child(deck)
 
 	# --- ヒンジ(画面の回転軸): デッキ奥端 ---
 	var hinge := Node3D.new()
-	hinge.position = Vector3(0, 0.0, -0.10 - 0.95 / 2.0)
+	hinge.position = Vector3(0, 0.0, -0.20 - 1.15 / 2.0)
 	hinge.rotation_degrees = Vector3(-15, 0, 0) # 垂直からやや奥へ(開き角~105°)
 	add_child(hinge)
 
@@ -121,7 +177,7 @@ func _build_laptop() -> void:
 
 
 func _build_keyboard() -> void:
-	var depth_offset := 0.12 # 行全体を少し奥へ(画面との隙間を確保)
+	var depth_offset := 0.0 # 行全体の前後位置(小さいほど手前=画面から離れる)
 	for r in ROWS.size():
 		var row: String = ROWS[r]
 		# r=0(QWERTY)が奥、r=2(ZXC)が手前になるよう前後を反転
@@ -137,28 +193,30 @@ func _make_key(ch: String, base: Vector3) -> void:
 	_key_pos[ch] = base
 	var key := MeshInstance3D.new()
 	var bm := BoxMesh.new()
-	bm.size = Vector3(KEY_W, KEY_H, KEY_D)
+	bm.size = Vector3(KEYCAP_W, KEYCAP_H, KEYCAP_D)
 	key.mesh = bm
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.07, 0.07, 0.085)
 	mat.metallic = 0.25
 	mat.roughness = 0.5
 	bm.material = mat
-	key.position = base + Vector3(0, KEY_H / 2.0, 0)
+	key.position = base + Vector3(0, KEYCAP_H / 2.0, 0)
 	add_child(key)
+	_key_node[ch] = key
 
 	var lbl := Label3D.new()
 	lbl.text = ch
 	lbl.font_size = 72
 	lbl.pixel_size = 0.0011
 	# HDRで1.0超の明るさにして発光(ブルーム)させる
-	lbl.modulate = Color(0.85, 1.25, 2.1)
+	lbl.modulate = LABEL_BASE
 	lbl.outline_modulate = Color(0.1, 0.3, 0.6, 0.5)
 	lbl.outline_size = 10
 	lbl.rotation_degrees = Vector3(-90, 0, 0) # 上面に寝かせる
-	lbl.position = base + Vector3(0, KEY_H + 0.002, 0)
+	lbl.position = base + Vector3(0, KEYCAP_H + 0.002, 0)
 	lbl.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	add_child(lbl)
+	_key_label[ch] = lbl
 
 
 func _build_runner() -> void:
@@ -166,20 +224,25 @@ func _build_runner() -> void:
 	if packed == null:
 		push_warning("runner.glb が未インポートです")
 		return
-	var runner: Node3D = packed.instantiate()
+	# コントローラ(位置・yaw)＋その子にモデル。
+	# モデルの素の正面は+Zなので180°回してコントローラのforward(-Z)に合わせる。
+	var model: Node3D = packed.instantiate()
+	var runner := Node3D.new()
 	runner.name = "Runner"
 	add_child(runner)
+	runner.add_child(model)
+	model.rotation.y = PI
+	model.scale = Vector3.ONE * 0.26
 	_runner = runner
 
-	# キー上に立たせる(高さ~0.22)。ホームポジションの F キーへ。
+	# キー上に立たせる。ホームポジションの F キーへ。yaw=0 で -Z(画面方向)。
 	var on: Vector3 = _key_pos.get("F", Vector3.ZERO)
-	runner.scale = Vector3.ONE * 0.26
-	runner.position = on + Vector3(0, KEY_H, 0)
-	# 画面(奥=-Z)の方を向いて走る
-	runner.rotation_degrees = Vector3(0, 0, 0)
+	runner.position = on + Vector3(0, KEYCAP_H, 0)
+	runner.rotation = Vector3.ZERO
 
 	var ap := runner.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if ap:
+		_ap = ap
 		var anim_name := ""
 		for n in ap.get_animation_list():
 			if n.to_lower().ends_with("run") or n.to_lower() == "run":
@@ -191,6 +254,7 @@ func _build_runner() -> void:
 			var a := ap.get_animation(anim_name)
 			a.loop_mode = Animation.LOOP_LINEAR
 			ap.play(anim_name)
+			ap.speed_scale = 0.0 # 静止時は止める(移動中のみ動かす)
 
 
 func _build_lights() -> void:
@@ -222,10 +286,11 @@ func _build_camera() -> void:
 	var target := Vector3(0, 0.05, -0.30) # フォールバック
 	if _runner != null:
 		target = _runner.position
-	cam.position = target + Vector3(0.0, 0.40, 0.50)
+	cam.position = target + CAM_OFFSET
 	add_child(cam)
-	cam.look_at(target + Vector3(0.0, 0.08, -0.60), Vector3.UP)
+	cam.look_at(target + CAM_LOOK, Vector3.UP)
 	cam.current = true
+	_cam = cam
 
 	# キャラの背中(カメラ側)を起こす補助光。逆光シルエット化を防ぐ。
 	var rim := OmniLight3D.new()
@@ -235,3 +300,206 @@ func _build_camera() -> void:
 	rim.omni_attenuation = 1.0
 	rim.position = target + Vector3(0.0, 0.5, 0.55)
 	add_child(rim)
+	_rim = rim
+
+
+func _build_ui() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+
+	# 読みやすさ用の半透明の帯
+	var bar := ColorRect.new()
+	bar.color = Color(0, 0, 0, 0.45)
+	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	bar.offset_bottom = 96
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(bar)
+
+	var panel := RichTextLabel.new()
+	panel.bbcode_enabled = true
+	panel.fit_content = true
+	panel.scroll_active = false
+	panel.autowrap_mode = TextServer.AUTOWRAP_OFF
+	panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	panel.position = Vector2(-300, 16)
+	panel.custom_minimum_size = Vector2(600, 0)
+	panel.add_theme_font_size_override("normal_font_size", 44)
+	panel.add_theme_font_size_override("bold_font_size", 44)
+	layer.add_child(panel)
+	_ui = panel
+
+	# 操作ヒント
+	var hint := Label.new()
+	hint.text = "WASD: A/D 旋回・W/S 前後   /   SPACE: ジャンプで踏む"
+	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	hint.add_theme_font_size_override("font_size", 20)
+	hint.modulate = Color(1, 1, 1, 0.7)
+	hint.position = Vector2(0, -10)
+	layer.add_child(hint)
+
+
+# ---------------- ゲームループ ----------------
+
+func _start_word(idx: int) -> void:
+	_word_idx = idx % WORDS.size()
+	_target = WORDS[_word_idx]
+	_char_idx = 0
+	_update_ui()
+	_set_next_highlight()
+
+
+func _set_next_highlight() -> void:
+	# 直前のハイライトを戻す
+	if _highlight_char != "" and _key_label.has(_highlight_char):
+		_key_label[_highlight_char].modulate = LABEL_BASE
+	_highlight_char = ""
+	if _char_idx < _target.length():
+		var ch := _target[_char_idx]
+		if _key_label.has(ch):
+			_key_label[ch].modulate = LABEL_NEXT
+			_highlight_char = ch
+
+
+func _update_ui() -> void:
+	if _ui == null:
+		return
+	var done := _target.substr(0, _char_idx)
+	var cur := ""
+	var rest := ""
+	if _char_idx < _target.length():
+		cur = _target[_char_idx]
+		rest = _target.substr(_char_idx + 1)
+	var bb := "[center]"
+	bb += "[color=#7fff9f]" + done + "[/color]"
+	bb += "[color=#ffe14d][b]" + cur + "[/b][/color]"
+	bb += "[color=#5a6472]" + rest + "[/color]"
+	bb += "[/center]"
+	_ui.text = bb
+
+
+func _forward() -> Vector3:
+	# rotation.y=0 で -Z(画面方向)を向く
+	var y := _runner.rotation.y
+	return Vector3(-sin(y), 0.0, -cos(y))
+
+
+func _physics_process(delta: float) -> void:
+	if _runner == null:
+		return
+	# A/D = 旋回(向き変更)
+	var turn := 0.0
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		turn += 1.0
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		turn -= 1.0
+	_runner.rotation.y += turn * TURN_SPEED * delta
+
+	# W/S = 向き基準の前後移動
+	var mv := 0.0
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		mv += 1.0
+	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		mv -= 0.6 # 後退は遅め
+	var pos: Vector3 = _runner.position
+	if mv != 0.0:
+		pos += _forward() * (mv * MOVE_SPEED * delta)
+	pos.x = clampf(pos.x, _bmin.x, _bmax.x)
+	pos.z = clampf(pos.z, _bmin.y, _bmax.y)
+
+	# ジャンプ/重力
+	if _grounded and Input.is_key_pressed(KEY_SPACE):
+		_jump_vy = JUMP_V
+		_grounded = false
+	if not _grounded:
+		_jump_vy -= GRAVITY * delta
+		pos.y += _jump_vy * delta
+		if pos.y <= _y_ground:
+			pos.y = _y_ground
+			_grounded = true
+			_runner.position = pos
+			_on_land()
+			_update_anim(mv, turn)
+			return
+	else:
+		pos.y = _y_ground
+	_runner.position = pos
+	_update_anim(mv, turn)
+
+
+func _update_anim(mv: float, turn: float) -> void:
+	if _ap == null:
+		return
+	# 移動・旋回・空中では走り再生、静止時は停止
+	var active := (mv != 0.0) or (turn != 0.0) or (not _grounded)
+	_ap.speed_scale = 1.0 if active else 0.0
+
+
+func _on_land() -> void:
+	var ch := _key_under_runner()
+	if ch == "":
+		return
+	_runner_char = ch
+	_key_depress(ch)
+	if ch == _highlight_char:
+		_flash_label(ch, Color(3.0, 3.0, 3.0)) # 正解フラッシュ(白)
+		_advance()
+	else:
+		_flash_label(ch, Color(3.0, 0.35, 0.35)) # お手つき(赤)
+
+
+func _advance() -> void:
+	_char_idx += 1
+	_update_ui()
+	_set_next_highlight()
+	if _char_idx >= _target.length():
+		var t := create_tween()
+		t.tween_interval(0.7)
+		t.tween_callback(func(): _start_word(_word_idx + 1))
+
+
+func _key_under_runner() -> String:
+	var p: Vector3 = _runner.position
+	var best := ""
+	var bestd := STOMP_RADIUS
+	for ch in _key_pos.keys():
+		var kp: Vector3 = _key_pos[ch]
+		var d := Vector2(p.x - kp.x, p.z - kp.z).length()
+		if d < bestd:
+			bestd = d
+			best = ch
+	return best
+
+
+func _key_depress(ch: String) -> void:
+	if not _key_node.has(ch):
+		return
+	var key: MeshInstance3D = _key_node[ch]
+	var base_y: float = _key_pos[ch].y + KEYCAP_H / 2.0
+	var tw := create_tween()
+	tw.tween_property(key, "position:y", base_y - 0.025, 0.05)
+	tw.tween_property(key, "position:y", base_y, 0.09)
+
+
+func _flash_label(ch: String, col: Color) -> void:
+	if not _key_label.has(ch):
+		return
+	var lbl: Label3D = _key_label[ch]
+	lbl.modulate = col
+	var tw := create_tween()
+	# 踏んだキーは次の対象ではなくなるので通常色に戻す
+	tw.tween_property(lbl, "modulate", LABEL_BASE, 0.3)
+
+
+func _process(delta: float) -> void:
+	if _cam == null or _runner == null:
+		return
+	var rp: Vector3 = _runner.position
+	var fwd := _forward()
+	var desired := rp + Vector3(0.0, CAM_OFFSET.y, 0.0) - fwd * CAM_OFFSET.z
+	var k: float = clampf(delta * 7.0, 0.0, 1.0)
+	_cam.position = _cam.position.lerp(desired, k)
+	_cam.look_at(rp + Vector3(0.0, CAM_LOOK.y, 0.0) + fwd * (-CAM_LOOK.z), Vector3.UP)
+	if _rim != null:
+		_rim.position = rp + Vector3(0.0, 0.5, 0.0) - fwd * 0.55

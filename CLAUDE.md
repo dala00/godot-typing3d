@@ -19,9 +19,15 @@
 - `_build_desk` / `_build_laptop` 机とノートPC本体・ヒンジ・画面
   - ディスプレイは QuadMesh に `assets/display_soft.png` を unshaded＋emission で表示（＝光る画面）
 - `_build_keyboard` / `_make_key` 英字26キー生成。**行は QWERTY=奥、ZXC=手前**（実キーボードと前後一致）。文字は Label3D を上面に寝かせ、HDR(modulate>1)で発光。`_key_pos[文字]=床位置` を記録。
-- `_build_runner` `assets/runner.glb` を instantiate し F キー上に配置、`Run` アニメをループ再生
+- `_build_runner` `assets/runner.glb` を**ラッパーNode3D**の子として配置(モデルは素の正面が+Zなので180°回して-Zへ)。F キー上スタート。`Run`アニメはループだが`speed_scale`で移動中のみ動かす
 - `_build_lights` 画面からの主光源(マゼンタ寄りSpot)＋補助Omni
-- `_build_camera` **キャラ背後やや上からの三人称追従**（走る先＝画面方向を見る）＋逆光防止のrim光
+- `_build_camera` **キャラ背後やや上からの三人称追従**（旋回に合わせて回り込む。`_forward()`基準）＋逆光防止のrim光
+
+## 操作・ゲームループ
+**タンク操作**: `A/D`=旋回(向き変更)、`W/S`=向き基準の前後移動、`SPACE`=ジャンプ。
+お題の単語(`WORDS`)を上部UIに表示し、**次に踏むキーを金色ハイライト**。プレイヤーがキャラを動かして対象キーへ行き、**ジャンプ→着地で踏んだキーを判定**(`_key_under_runner`が`STOMP_RADIUS`内の最寄りキー)。正解なら白フラッシュ＆進行、違うキーは赤フラッシュ。単語完了で次の単語へ。
+- 物理は`_physics_process`(移動/旋回/重力/着地)、カメラ追従は`_process`。移動範囲は`_compute_bounds`でキー配置から算出。
+- 主要パラメータ: `MOVE_SPEED` `TURN_SPEED` `JUMP_V` `GRAVITY` `STOMP_RADIUS`。
 
 ## アセット
 - `assets/blend/runner.blend` 主人公のソース（Blender 5.x）。ちびキャラ（大頭＋胴＋腕脚）＋11ボーンのアーマチュア。**リジッドスキン**（各パーツを頂点グループ weight=1 で1ボーンに割当→join）。`Run` アクション（24fps, 1–20フレームループ。コンタクト/パッシング×2）。**肘は前曲げ・膝は後ろ曲げ**（人体準拠）。
@@ -34,6 +40,7 @@
 - `tools/import.ps1` Godotヘッドレス再インポート（新規 .glb/.png を取り込む。**新アセット追加後は必須**）
 - `tools/crop.ps1` `shot.png` の一部を拡大→`tools/crop.png`（キャラ等の細部確認用）
 - `tools/blur.ps1` 画像を縮小→拡大でぼかす（ディスプレイ画像の再生成用）
+- `tools/sendkeys.ps1` ゲーム窓へキー入力（`-Keys "godot"`で文字列、`-Key W -Hold 700`で長押し）。操作検証用
 
 典型ループ: `world.gd`編集 → `mcp__godot__run_project` → `tools/cap.ps1` で確認 → 直す → `mcp__godot__stop_project`。
 パースエラーは `mcp__godot__get_debug_output` に行番号付きで出る。
@@ -42,4 +49,5 @@
 - スクショは必ず `(DEBUG)` 窓を狙う（`cap.ps1` の既定）。`typing3d` で曖昧一致するとエディタ本体を撮る。
 - GodotはBlend直接インポートを試みて失敗するので、`project.godot` で `import/blender/enabled=false`。`assets/blend/` と `tools/` には `.gdignore` を置いてGodogの索引から除外。
 - Blender 5.x の新アニメAPIでは `Action.fcurves` が無い（layers/strips経由）。`keyframe_insert` 自体は従来通り使える。
+- **定数名の衝突注意**: Godotの組み込みキー定数 `KEY_W` `KEY_A` … `KEY_H` `KEY_SPACE` 等は global。自前の定数を `KEY_*` で作ると衝突して `Input.is_key_pressed()` にfloatを渡すバグになる。キー寸法は `KEYCAP_W/D/H` という名前にしてある。
 - `.claude/settings.local.json`（マシン固有の絶対パス許可）と `tools/shot.png`/`crop.png` は gitignore 済み。
