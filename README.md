@@ -23,5 +23,12 @@ Godot 4.6.3 / GL Compatibility。
 ### 効果音
 - すべてコードでPCM合成（`scripts/sfx.gd`）。外部素材なし。
 
+### フォント
+- **Sawarabi Gothic**（SIL Open Font License）。使用文字のみにサブセット化して同梱（`fonts/SawarabiGothic-subset.ttf`、ライセンス: `fonts/OFL.txt`）。
+
 ### その他
 - ディスプレイ表示画像 `assets/display.png` はユーザー提供素材。
+
+## Web(HTML5)公開
+- 書き出し: `tools/export_web.ps1`（→ `exports/typing3d.html`）。日本語フォント埋め込み済み、BGMは初回操作で再生開始。
+- `assets/bgm.mp3` はローカルに配置が必要（git非追跡）。無くてもBGM無しで動作。

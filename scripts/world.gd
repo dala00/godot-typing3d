@@ -83,6 +83,8 @@ var _ui_score: Label = null
 var _ui_time: Label = null
 var _ui_pop: Label = null
 var _sfx: Node = null
+var _bgm: AudioStreamPlayer = null
+var _bgm_pending := false # web: 初回操作までBGM再生を保留
 # 操作感
 var _jump_buf := 0.0
 var _coyote := 0.0
@@ -123,7 +125,12 @@ func _build_bgm() -> void:
 	p.stream = s
 	p.volume_db = -12.0
 	add_child(p)
-	p.play()
+	_bgm = p
+	# ブラウザは初回ユーザー操作前の再生を無視するので、web では初入力まで保留
+	if OS.has_feature("web"):
+		_bgm_pending = true
+	else:
+		p.play()
 
 
 func _compute_bounds() -> void:
@@ -369,6 +376,12 @@ func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 
+	# 日本語フォント(サブセット同梱)。Webはこれが無いと豆腐(□)になる。
+	var ft := load("res://fonts/SawarabiGothic-subset.ttf")
+	var th := Theme.new()
+	if ft != null:
+		th.default_font = ft
+
 	# 読みやすさ用の半透明の帯
 	var bar := ColorRect.new()
 	bar.color = Color(0, 0, 0, 0.45)
@@ -432,6 +445,11 @@ func _build_ui() -> void:
 	hint.modulate = Color(1, 1, 1, 0.6)
 	hint.position = Vector2(0, -10)
 	layer.add_child(hint)
+
+	# 全テキストUIに日本語フォントThemeを適用
+	for c in layer.get_children():
+		if c is Control:
+			(c as Control).theme = th
 
 
 # ---------------- ゲームループ ----------------
@@ -505,6 +523,11 @@ func _forward() -> Vector3:
 func _physics_process(delta: float) -> void:
 	if _runner == null:
 		return
+	# web: 最初の操作でBGM開始(自動再生制限の回避)
+	if _bgm_pending and Input.is_anything_pressed():
+		_bgm_pending = false
+		if _bgm:
+			_bgm.play()
 	if _game_over:
 		_check_restart()
 		return

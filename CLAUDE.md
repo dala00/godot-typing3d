@@ -51,6 +51,15 @@
 - `tools/crop.ps1` `shot.png` の一部を拡大→`tools/crop.png`（キャラ等の細部確認用）
 - `tools/blur.ps1` 画像を縮小→拡大でぼかす（ディスプレイ画像の再生成用）
 - `tools/sendkeys.ps1` ゲーム窓へキー入力（`-Keys "godot"`で文字列、`-Key W -Hold 700`で長押し）。操作検証用
+- `tools/make_font.py` 日本語フォントを `scripts/*.gd` の使用文字だけにサブセット化（`fonts/_src/原本` → `fonts/SawarabiGothic-subset.ttf`）。**テキストを増やしたら再実行**
+- `tools/export_web.ps1` Web(HTML5)書き出しをCLI実行（preset "Web" → `exports/typing3d.html`）
+
+## Web(HTML5)書き出し
+- 日本語フォントは**埋め込み必須**(OSフォント非依存)。`fonts/SawarabiGothic-subset.ttf`(OFL/サブセット)を`_build_ui`でThemeに設定。原本は`fonts/_src/`(書き出し`exclude_filter`＋`.gdignore`で除外)。`fonts/OFL.txt`同梱。
+- BGMはブラウザの自動再生制限のため**初回操作で再生**(`_build_bgm`が`OS.has_feature("web")`で分岐、`_physics_process`で`Input.is_anything_pressed()`を検知して`play()`)。
+- 解像度非依存: `project.godot [display]` の `stretch/mode=canvas_items` ＋ `aspect=keep`(基準1280x720)。
+- 再書き出し: `tools/export_web.ps1`。`export_presets.cfg` は `export_filter=all_resources` ＋ `exclude_filter=fonts/_src/*,exports/*,tools/*`。
+- 成果物 `exports/` はgit非追跡(`exports/.gitignore`は`*`＋`!.gdignore`)。BGM(`assets/bgm.mp3`)はgit非追跡だがpckには同梱される(=作品への組み込みでDOVA規約OK)。
 
 典型ループ: `world.gd`編集 → `mcp__godot__run_project` → `tools/cap.ps1` で確認 → 直す → `mcp__godot__stop_project`。
 パースエラーは `mcp__godot__get_debug_output` に行番号付きで出る。
