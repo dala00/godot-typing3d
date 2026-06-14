@@ -7,6 +7,7 @@ const KEYCAP_W := 0.165
 const KEYCAP_D := 0.165
 const KEYCAP_H := 0.05
 const PITCH := 0.19
+const DESK_Y := -0.041   # 机の天面y(小物はこの上に置く)
 
 const ROWS := ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
 const ROW_STAGGER := [0.0, 0.5, 1.0] # 横ずらし(キー数)
@@ -103,6 +104,7 @@ func _ready() -> void:
 	_build_desk()
 	_build_laptop()
 	_build_keyboard()
+	_build_props()
 	_build_lights()
 	_build_runner()
 	_build_camera()
@@ -154,8 +156,21 @@ func _compute_bounds() -> void:
 
 func _build_environment() -> void:
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.005, 0.006, 0.01)
+	# 部屋の360度パノラマを背景に。暗闇想定なので強く減光して
+	# ノートPCの画面光が主役になるようにする。
+	var room := load("res://assets/room.png")
+	if room != null:
+		var sky_mat := PanoramaSkyMaterial.new()
+		sky_mat.panorama = room
+		sky_mat.energy_multiplier = 0.2 # ほぼ暗闇。輪郭がうっすら分かる程度まで落とす
+		var sky := Sky.new()
+		sky.sky_material = sky_mat
+		env.background_mode = Environment.BG_SKY
+		env.sky = sky
+	else:
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0.005, 0.006, 0.01)
+	# 環境光は明示色のまま(skyで自動ライティングすると明るくなりすぎる)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.35, 0.45, 0.7)
 	env.ambient_light_energy = 0.06
@@ -164,26 +179,36 @@ func _build_environment() -> void:
 	env.glow_strength = 1.1
 	env.glow_bloom = 0.25
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
-	# 奥行きのある暗さを出す軽いフォグ
+	# 奥行きのある暗さを出す軽いフォグ。背景パノラマは隠したくないので
+	# fog_sky_affect を下げてフォグが空(部屋)を覆わないようにする。
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.02, 0.03, 0.06)
 	env.fog_density = 0.04
+	env.fog_sky_affect = 0.0
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 
 func _build_desk() -> void:
+	# 机は箱で作り、手前(+Z=人間が座る側)で切る。
+	# 前端をノートPC手前(deck前端 z=+0.375)のすぐ先に置き、奥と左右へ伸ばす。
+	var front_z := 0.46          # テーブルの前端(これより手前=+Zには天板が無い)
+	var depth := 7.0             # 奥行き(奥=-Zへ伸びる)
+	var width := 7.0
+	var thick := 0.08
+	var center_z := front_z - depth / 2.0
 	var desk := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(12, 12)
-	desk.mesh = pm
+	var bm := BoxMesh.new()
+	bm.size = Vector3(width, thick, depth)
+	desk.mesh = bm
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.03, 0.03, 0.04)
 	mat.metallic = 0.1
 	mat.roughness = 0.35 # 画面光をうっすら反射
-	pm.material = mat
-	desk.position = Vector3(0, -0.041, 0)
+	bm.material = mat
+	# 天面が y=-0.041 に来るよう中心を下げる
+	desk.position = Vector3(0, -0.041 - thick / 2.0, center_z)
 	add_child(desk)
 
 
@@ -286,6 +311,107 @@ func _make_key(ch: String, base: Vector3) -> void:
 	lbl.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	add_child(lbl)
 	_key_label[ch] = lbl
+
+
+# ---- 机上の小物(マウス/マグ/ペン立て/スマホ/付箋) ----
+# 配置方針: ディスプレイ側(-Z奥)と左右(±X、デッキの外)に置く。
+# 手前(+Z)は人間が座っている想定なので何も置かない。
+
+func _prop_mat(color: Color, metallic := 0.2, roughness := 0.6, emis := Color.BLACK, emis_e := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.metallic = metallic
+	m.roughness = roughness
+	if emis_e > 0.0:
+		m.emission_enabled = true
+		m.emission = emis
+		m.emission_energy_multiplier = emis_e
+	return m
+
+
+func _spawn_prop(mesh: Mesh, mat: StandardMaterial3D, pos: Vector3, rot_deg := Vector3.ZERO, scl := Vector3.ONE) -> MeshInstance3D:
+	if mesh is PrimitiveMesh:
+		(mesh as PrimitiveMesh).material = mat
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = pos
+	mi.rotation_degrees = rot_deg
+	mi.scale = scl
+	add_child(mi)
+	return mi
+
+
+func _build_props() -> void:
+	# --- マウスパッド＋マウス(右手側) ---
+	var pad := BoxMesh.new()
+	pad.size = Vector3(0.52, 0.006, 0.66)
+	_spawn_prop(pad, _prop_mat(Color(0.035, 0.035, 0.045), 0.0, 0.85), Vector3(1.5, DESK_Y + 0.003, -0.05))
+	var mouse := SphereMesh.new()
+	mouse.radius = 0.5
+	mouse.height = 1.0
+	_spawn_prop(mouse, _prop_mat(Color(0.08, 0.08, 0.10), 0.3, 0.35),
+		Vector3(1.5, DESK_Y + 0.045, -0.08), Vector3.ZERO, Vector3(0.16, 0.09, 0.26))
+	# ゲーミング風の発光ライン(小さな光のアクセント)
+	var led := BoxMesh.new()
+	led.size = Vector3(0.018, 0.005, 0.10)
+	_spawn_prop(led, _prop_mat(Color(0, 0, 0), 0.0, 0.5, Color(0.3, 0.8, 2.0), 3.0),
+		Vector3(1.5, DESK_Y + 0.092, -0.02))
+
+	# --- マグカップ(右奥) ---
+	var body := CylinderMesh.new()
+	body.top_radius = 0.115
+	body.bottom_radius = 0.10
+	body.height = 0.24
+	_spawn_prop(body, _prop_mat(Color(0.5, 0.46, 0.5), 0.05, 0.5), Vector3(1.55, DESK_Y + 0.12, -0.5))
+	var coffee := CylinderMesh.new()
+	coffee.top_radius = 0.10
+	coffee.bottom_radius = 0.10
+	coffee.height = 0.01
+	_spawn_prop(coffee, _prop_mat(Color(0.06, 0.03, 0.01), 0.1, 0.2, Color(0.18, 0.07, 0.0), 0.4),
+		Vector3(1.55, DESK_Y + 0.235, -0.5))
+	var handle := TorusMesh.new()
+	handle.inner_radius = 0.035
+	handle.outer_radius = 0.075
+	_spawn_prop(handle, _prop_mat(Color(0.5, 0.46, 0.5), 0.05, 0.5),
+		Vector3(1.685, DESK_Y + 0.12, -0.5), Vector3(0, 0, 90))
+
+	# --- ペン立て＋ペン(左奥。ペンは色つき発光) ---
+	var cup := CylinderMesh.new()
+	cup.top_radius = 0.075
+	cup.bottom_radius = 0.068
+	cup.height = 0.22
+	_spawn_prop(cup, _prop_mat(Color(0.10, 0.10, 0.13), 0.5, 0.4), Vector3(-1.5, DESK_Y + 0.11, -0.45))
+	var pen_cols := [Color(2.2, 0.4, 0.4), Color(0.4, 0.8, 2.4), Color(0.5, 2.2, 0.7)]
+	var tilts := [Vector3(7, 0, 9), Vector3(-6, 0, -8), Vector3(9, 0, -4)]
+	for i in 3:
+		var pen := CylinderMesh.new()
+		pen.top_radius = 0.009
+		pen.bottom_radius = 0.009
+		pen.height = 0.34
+		_spawn_prop(pen, _prop_mat(Color(0.1, 0.1, 0.1), 0.2, 0.5, pen_cols[i], 1.8),
+			Vector3(-1.5 + (i - 1) * 0.03, DESK_Y + 0.22, -0.45), tilts[i])
+
+	# --- スマホ(左手前。画面がうっすら光る=第2の小光源) ---
+	var phone := BoxMesh.new()
+	phone.size = Vector3(0.19, 0.018, 0.38)
+	_spawn_prop(phone, _prop_mat(Color(0.02, 0.02, 0.03), 0.6, 0.3),
+		Vector3(-1.42, DESK_Y + 0.009, 0.08), Vector3(0, 12, 0))
+	var scr := BoxMesh.new()
+	scr.size = Vector3(0.16, 0.004, 0.34)
+	_spawn_prop(scr, _prop_mat(Color(0, 0, 0), 0.0, 0.2, Color(0.5, 0.7, 1.6), 1.6),
+		Vector3(-1.42, DESK_Y + 0.02, 0.08), Vector3(0, 12, 0))
+
+	# --- 付箋メモ(左・デッキのすぐ外) ---
+	var note := BoxMesh.new()
+	note.size = Vector3(0.16, 0.03, 0.16)
+	_spawn_prop(note, _prop_mat(Color(0.85, 0.78, 0.28), 0.0, 0.85, Color(0.22, 0.2, 0.05), 0.4),
+		Vector3(-1.28, DESK_Y + 0.015, -0.18), Vector3(0, -18, 0))
+
+	# --- ノート(右奥・閉じた状態) ---
+	var book := BoxMesh.new()
+	book.size = Vector3(0.42, 0.05, 0.3)
+	_spawn_prop(book, _prop_mat(Color(0.12, 0.14, 0.2), 0.1, 0.6),
+		Vector3(1.45, DESK_Y + 0.025, -0.72), Vector3(0, -8, 0))
 
 
 func _build_runner() -> void:

@@ -15,10 +15,11 @@
 見た目の調整は基本 `world.gd` を編集して目視ループで詰める。
 
 ### world.gd の構造
-- `_build_environment` 真っ暗背景＋弱い環境光＋glow(ブルーム)＋薄いフォグ
+- `_build_environment` 背景は **`assets/room.png` の360度パノラマ**(`PanoramaSkyMaterial`、`energy_multiplier`で強く減光して「暗い部屋」に)＋弱い環境光＋glow(ブルーム)＋薄いフォグ。**フォグが背景を覆わないよう `fog_sky_affect=0.0`**(これを上げるとパノラマが見えなくなる)。room.png が無ければ単色黒にフォールバック。
 - `_build_desk` / `_build_laptop` 机とノートPC本体・ヒンジ・画面
   - ディスプレイは QuadMesh に `assets/display_soft.png` を unshaded＋emission で表示（＝光る画面）
 - `_build_keyboard` / `_make_key` 英字26キー生成。**行は QWERTY=奥、ZXC=手前**（実キーボードと前後一致）。文字は Label3D を上面に寝かせ、HDR(modulate>1)で発光。`_key_pos[文字]=床位置` を記録。
+- `_build_props` 机上の小物(マウス＋パッド／マグカップ／ペン立て＋発光ペン／スマホ画面/付箋／ノート)をプリミティブ生成。**配置はディスプレイ側(-Z奥)と左右(±X、デッキの外 x≈±1.5)のみ。手前(+Z)は人間が座る想定で何も置かない**。`_prop_mat`/`_spawn_prop` ヘルパ。位置の基準は机天面 `DESK_Y`。
 - `_build_runner` `assets/runner.glb` を**ラッパーNode3D**の子として配置(モデルは素の正面が+Zなので180°回して-Zへ)。F キー上スタート。`Run`アニメはループだが`speed_scale`で移動中のみ動かす
 - `_build_lights` 画面からの主光源(マゼンタ寄りSpot)＋補助Omni
 - `_build_camera` **キャラ背後やや上からの三人称追従**（旋回に合わせて回り込む。`_forward()`基準）＋逆光防止のrim光
@@ -42,6 +43,7 @@
 - `assets/blend/runner.blend` 主人公のソース（Blender 5.x）。ちびキャラ（大頭＋胴＋腕脚）＋11ボーンのアーマチュア。**リジッドスキン**（各パーツを頂点グループ weight=1 で1ボーンに割当→join）。`Run` アクション（24fps, 1–20フレームループ。コンタクト/パッシング×2）。**肘は前曲げ・膝は後ろ曲げ**（人体準拠）。
 - `assets/runner.glb` 上記の書き出し（`use_selection`, yup, ACTIONS）
 - `assets/display.png` ディスプレイ原画 / `assets/display_soft.png` それを縮小→拡大でぼかした版（至近距離風）。**表示に使うのは soft 版**。
+- `assets/room.png` 部屋の360度パノラマ(2:1 equirectangular、ユーザー作成)。背景の風景として `_build_environment` で `PanoramaSkyMaterial` に設定。暗闇想定で減光して使う。
 - `assets/bgm.mp3` BGM(DOVA素材, Addpico「プレゼントボックス feat.音影カナ」)。`_build_bgm`でループ再生(volume_db -12)。**再配布回避でgit非追跡**(`.gitignore`)、無ければ無音で動作。クレジットは `README.md`。
 
 ## 開発ワークフロー（tools/ スクリプト）
