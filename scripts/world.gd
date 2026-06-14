@@ -429,7 +429,7 @@ func _start_game() -> void:
 
 
 func _pick_word() -> String:
-	var target_len: int = clampi(3 + int(_level / 2.0), 3, 8)
+	var target_len: int = clampi(3 + int(_level / 3.0), 3, 8)
 	var cands := WORDS.filter(func(s): return abs(s.length() - target_len) <= 1)
 	if cands.is_empty():
 		cands = WORDS
@@ -442,9 +442,9 @@ func _pick_word() -> String:
 func _next_word() -> void:
 	_target = _pick_word()
 	_char_idx = 0
-	# キー間を歩いて移動する時間を見込みつつ、ややタイトに(レベルで微減)
-	var per_char: float = clampf(2.6 - _level * 0.13, 1.4, 2.6)
-	_time_limit = 2.0 + _target.length() * per_char
+	# キー間を歩く時間を見込む。難易度の上がり方はゆるめ(減衰小・下限高め)
+	var per_char: float = clampf(2.6 - _level * 0.07, 1.8, 2.6)
+	_time_limit = 2.5 + _target.length() * per_char
 	_time_left = _time_limit
 	_playing = true
 	_update_ui()
