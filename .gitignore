@@ -1,0 +1,13 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Local Claude settings (machine-specific absolute paths)
+.claude/settings.local.json
+
+# Transient screenshots produced by tools/cap.ps1 / crop.ps1
+tools/shot.png
+tools/crop.png
+
+# Blender auto-backup
+*.blend1
