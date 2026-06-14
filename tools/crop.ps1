@@ -2,8 +2,8 @@
 # 既定はキーボード中央付近。割合(0..1)で領域指定可。
 # 使い方: & "...\tools\crop.ps1"   または  ... -CX 0.3 -CY 0.4 -CW 0.42 -CH 0.52 -Zoom 3
 param(
-    [string]$In = "D:\users\documents\godot\typing-3d\tools\shot.png",
-    [string]$Out = "D:\users\documents\godot\typing-3d\tools\crop.png",
+    [string]$In = (Join-Path $PSScriptRoot "shot.png"),
+    [string]$Out = (Join-Path $PSScriptRoot "crop.png"),
     [double]$CX = 0.30,
     [double]$CY = 0.40,
     [double]$CW = 0.42,

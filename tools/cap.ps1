@@ -1,6 +1,6 @@
 param(
     [string]$TitleMatch = "(DEBUG)",
-    [string]$Out = "D:\users\documents\godot\typing-3d\tools\shot.png",
+    [string]$Out = (Join-Path $PSScriptRoot "shot.png"),
     [int]$Wait = 900
 )
 

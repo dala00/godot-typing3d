@@ -11,3 +11,6 @@ tools/crop.png
 
 # Blender auto-backup
 *.blend1
+
+# Local machine-specific Godot binary path (keeps absolute path out of git)
+tools/.godot-path

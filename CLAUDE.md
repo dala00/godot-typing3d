@@ -6,7 +6,7 @@
 
 ## 技術スタック
 - Godot **4.6.3** stable / レンダラ **GL Compatibility**（軽量・Web書き出し志向）/ 物理 Jolt
-- Godot本体: `D:\users\documents\programs\godot\4.6.3\Godot_v4.6.3-stable_win64_console.exe`
+- Godot本体パスは `tools/.godot-path`（gitignore済）か環境変数 `GODOT_BIN` で解決（`import.ps1` が参照）
 - 3Dアセットは **Blender (MCP経由)** で生成 → glTF(GLB) で取り込み
 
 ## 構成方針（重要）

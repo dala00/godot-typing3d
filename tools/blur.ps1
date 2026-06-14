@@ -1,8 +1,8 @@
 # 画像を縮小→拡大で柔らかくぼかす(至近距離のディスプレイ風)。
 # 使い方: & "...\tools\blur.ps1"   または  ... -Src x.png -Dst y.png -Factor 0.22
 param(
-    [string]$Src = "D:\users\documents\godot\typing-3d\assets\display.png",
-    [string]$Dst = "D:\users\documents\godot\typing-3d\assets\display_soft.png",
+    [string]$Src = (Join-Path $PSScriptRoot "..\assets\display.png"),
+    [string]$Dst = (Join-Path $PSScriptRoot "..\assets\display_soft.png"),
     [double]$Factor = 0.22
 )
 Add-Type -AssemblyName System.Drawing
