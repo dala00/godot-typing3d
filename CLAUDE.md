@@ -42,6 +42,7 @@
 - `assets/blend/runner.blend` 主人公のソース（Blender 5.x）。ちびキャラ（大頭＋胴＋腕脚）＋11ボーンのアーマチュア。**リジッドスキン**（各パーツを頂点グループ weight=1 で1ボーンに割当→join）。`Run` アクション（24fps, 1–20フレームループ。コンタクト/パッシング×2）。**肘は前曲げ・膝は後ろ曲げ**（人体準拠）。
 - `assets/runner.glb` 上記の書き出し（`use_selection`, yup, ACTIONS）
 - `assets/display.png` ディスプレイ原画 / `assets/display_soft.png` それを縮小→拡大でぼかした版（至近距離風）。**表示に使うのは soft 版**。
+- `assets/bgm.mp3` BGM(DOVA素材, Addpico「プレゼントボックス feat.音影カナ」)。`_build_bgm`でループ再生(volume_db -12)。**再配布回避でgit非追跡**(`.gitignore`)、無ければ無音で動作。クレジットは `README.md`。
 
 ## 開発ワークフロー（tools/ スクリプト）
 許可プロンプトを減らすため、よく使う操作は **`tools/` の固定引数スクリプト**にしてある。引数なしで呼べば既定で動く。

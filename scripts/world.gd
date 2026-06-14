@@ -108,7 +108,22 @@ func _ready() -> void:
 	_compute_bounds()
 	_sfx = preload("res://scripts/sfx.gd").new()
 	add_child(_sfx)
+	_build_bgm()
 	_start_game()
+
+
+func _build_bgm() -> void:
+	# BGM: 「プレゼントボックス feat.音影カナ」/ Addpico (DOVA-SYNDROME)
+	var s = load("res://assets/bgm.mp3")
+	if s == null:
+		return
+	if s is AudioStreamMP3:
+		s.loop = true
+	var p := AudioStreamPlayer.new()
+	p.stream = s
+	p.volume_db = -12.0
+	add_child(p)
+	p.play()
 
 
 func _compute_bounds() -> void:

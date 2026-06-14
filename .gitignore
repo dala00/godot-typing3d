@@ -14,3 +14,7 @@ tools/crop.png
 
 # Local machine-specific Godot binary path (keeps absolute path out of git)
 tools/.godot-path
+
+# BGM原ファイルは再配布を避けるため非追跡(DOVA素材)。各自 assets/bgm.mp3 に配置。
+assets/bgm.mp3
+assets/bgm.mp3.import
